@@ -121,6 +121,7 @@ static int find_sdca_function(struct acpi_device *adev, void *data)
 	u32 function_type;
 	int function_index;
 	u64 addr;
+	bool has_dc_value;
 	int i, ret;
 
 	if (sdca_data->num_functions >= SDCA_MAX_FUNCTION_COUNT) {
@@ -152,17 +153,24 @@ static int find_sdca_function(struct acpi_device *adev, void *data)
 	if (!control5)
 		return -ENODEV;
 
+	has_dc_value = fwnode_property_present(control5,
+					       "mipi-sdca-control-dc-value");
 	ret = fwnode_property_read_u32(control5, "mipi-sdca-control-dc-value",
 				       &function_type);
 
 	fwnode_handle_put(control5);
 
-	if (ret < 0) {
-		if (sdca_fallback_function_type(slave, &function_type)) {
-			dev_err(dev, "function type only supported as DisCo constant\n");
-			return ret;
-		}
-		dev_info(dev, "function type not a DisCo constant, using fallback for known peripheral\n");
+	/*
+	 * Only use the fallback when firmware provides no constant at all.
+	 * A constant that is present but cannot be read is a different
+	 * firmware problem and is still reported as an error.
+	 */
+	if (!has_dc_value &&
+	    !sdca_fallback_function_type(slave, &function_type)) {
+		dev_warn(dev, FW_BUG "function type not a DisCo constant, using fallback for known peripheral\n");
+	} else if (ret < 0) {
+		dev_err(dev, "function type only supported as DisCo constant\n");
+		return ret;
 	}
 
 	if (!sdca_device_quirk_match(slave, SDCA_QUIRKS_SKIP_FUNC_TYPE_PATCHING)) {
