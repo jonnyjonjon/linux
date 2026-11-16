@@ -164,19 +164,28 @@ static void generic_new_peripheral_assigned(struct sdw_bus *bus,
  *
  * The _DSD values are patched in from NVS by the BIOS at _INI time and
  * some boards ship values the attached peripherals cannot follow. On the
- * HP OmniBook Ultra 14 (board 8EB4, BIOS F.06) the four TAS2783 amplifiers
- * on links 1 and 2 only enumerate reliably with DOAIS=1 and DOAISE2=1;
- * the BIOS provides DOAIS=3 and DOAISE2=0, with which three of the four
- * amplifiers drop off the bus within a few hundred ms of attaching.
+ * HP OmniBook Ultra 14 (board 8EB4, BIOS F.06 and F.07) the four TAS2783
+ * amplifiers on links 1 and 2 only enumerate reliably with DOAIS=1 and
+ * DOAISE2=1; the BIOS provides DOAIS=3 and DOAISE2=0, with which three of
+ * the four amplifiers drop off the bus within a few hundred ms of
+ * attaching.
+ *
+ * An override is only applied while firmware still reports the known-bad
+ * values in fw_doais/fw_doaise2, so that a corrected BIOS takes precedence
+ * without a kernel change.
  */
 struct sdw_intel_actmctl_quirk {
 	u8 link_mask;
+	u16 fw_doais;
+	u16 fw_doaise2;
 	u16 doais;
 	u16 doaise2;
 };
 
 static const struct sdw_intel_actmctl_quirk hp_omnibook_ultra_14_actmctl = {
 	.link_mask = BIT(1) | BIT(2),
+	.fw_doais = 3,
+	.fw_doaise2 = 0,
 	.doais = 1,
 	.doaise2 = 1,
 };
@@ -185,8 +194,8 @@ static const struct dmi_system_id sdw_intel_actmctl_quirk_table[] = {
 	{
 		/* HP OmniBook Ultra 14 (kd0xxx), 4x TAS2783 on links 1/2 */
 		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "HP"),
-			DMI_MATCH(DMI_BOARD_NAME, "8EB4"),
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "HP"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "8EB4"),
 		},
 		.driver_data = (void *)&hp_omnibook_ultra_14_actmctl,
 	},
@@ -207,7 +216,14 @@ static void sdw_intel_apply_actmctl_quirk(struct sdw_bus *bus,
 	if (!(quirk->link_mask & BIT(bus->link_id)))
 		return;
 
-	dev_info(bus->dev, "ACTMCTL quirk: doais %#x -> %#x, doaise2 %#x -> %#x\n",
+	if (intel_prop->doais != quirk->fw_doais ||
+	    intel_prop->doaise2 != quirk->fw_doaise2) {
+		dev_dbg(bus->dev, "ACTMCTL quirk skipped: firmware doais %#x doaise2 %#x\n",
+			intel_prop->doais, intel_prop->doaise2);
+		return;
+	}
+
+	dev_info(bus->dev, FW_BUG "ACTMCTL quirk: doais %#x -> %#x, doaise2 %#x -> %#x\n",
 		 intel_prop->doais, quirk->doais,
 		 intel_prop->doaise2, quirk->doaise2);
 
