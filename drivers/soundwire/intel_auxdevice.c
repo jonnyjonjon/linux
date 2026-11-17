@@ -8,6 +8,7 @@
 #include <linux/acpi.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -158,6 +159,21 @@ static void generic_new_peripheral_assigned(struct sdw_bus *bus,
 		sdw->link_res->hw_ops->program_sdi(sdw, dev_num);
 }
 
+/*
+ * Platforms on which ACTMCTL.DACTQE must be left at its hardware reset
+ * value instead of being set by the driver.
+ */
+static const struct dmi_system_id intel_keep_dactqe_quirk_table[] = {
+	{
+		/* HP OmniBook Ultra 14 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "HP"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "8EB4"),
+		},
+	},
+	{}
+};
+
 static int sdw_master_read_intel_prop(struct sdw_bus *bus)
 {
 	struct sdw_master_prop *prop = &bus->prop;
@@ -241,6 +257,11 @@ static int sdw_master_read_intel_prop(struct sdw_bus *bus)
 	fwnode_property_read_u16(link,
 				 "intel-sdw-dods",
 				 &intel_prop->dods);
+
+	intel_prop->keep_dactqe = dmi_check_system(intel_keep_dactqe_quirk_table);
+	if (intel_prop->keep_dactqe)
+		dev_info(bus->dev, "quirk: leaving ACTMCTL DACTQE at reset value\n");
+
 	bus->vendor_specific_prop = intel_prop;
 
 	dev_dbg(bus->dev, "doaise %#x doais %#x dodse %#x dods %#x\n",
