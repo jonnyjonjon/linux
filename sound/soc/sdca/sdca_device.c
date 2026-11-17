@@ -97,6 +97,25 @@ static bool sdca_device_quirk_skip_func_type_patching(struct sdw_slave *slave)
 	return false;
 }
 
+/*
+ * The HP OmniBook Ultra 14 (board 8EB4) firmware declares the Function
+ * Topology control (0x05) of its TI TAS2783 amplifiers with access mode 3
+ * and no DisCo constant, so the function type cannot be parsed. The
+ * TAS2783 only implements a SmartAmp function.
+ */
+static bool sdca_device_quirk_tas2783_smart_amp_func_type(struct sdw_slave *slave)
+{
+	const char *vendor, *board;
+
+	if (slave->id.mfg_id != 0x0102 || slave->id.part_id != 0x0000)
+		return false;
+
+	vendor = dmi_get_system_info(DMI_SYS_VENDOR);
+	board = dmi_get_system_info(DMI_BOARD_NAME);
+
+	return vendor && board && !strcmp(vendor, "HP") && !strcmp(board, "8EB4");
+}
+
 bool sdca_device_quirk_match(struct sdw_slave *slave, enum sdca_quirk quirk)
 {
 	switch (quirk) {
@@ -104,6 +123,8 @@ bool sdca_device_quirk_match(struct sdw_slave *slave, enum sdca_quirk quirk)
 		return sdca_device_quirk_rt712_vb(slave);
 	case SDCA_QUIRKS_SKIP_FUNC_TYPE_PATCHING:
 		return sdca_device_quirk_skip_func_type_patching(slave);
+	case SDCA_QUIRKS_TAS2783_SMART_AMP_FUNC_TYPE:
+		return sdca_device_quirk_tas2783_smart_amp_func_type(slave);
 	default:
 		break;
 	}
